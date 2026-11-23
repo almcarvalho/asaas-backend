@@ -147,7 +147,7 @@ function start() {
     res.json(await prisma.customer.findMany({ where, ...listOptions(req) }));
   });
 
-  app.post(['/order', '/payment'], json, async (req, res) => {
+  app.post('/order', json, async (req, res) => {
     const customer = await prisma.customer.findUnique({ where: customerFilter(req.body?.id) });
     if (!customer) throw new HttpError(404, 'Cliente não encontrado.');
 
@@ -193,15 +193,6 @@ function start() {
     const order = await prisma.order.findUnique({ where: { id } });
     if (!order) throw new HttpError(404, 'Pedido não encontrado.');
     res.json(order);
-  });
-
-  app.get('/payment', async (req, res) => {
-    const id = req.query.id;
-    if (id !== undefined && (typeof id !== 'string' || !id.trim())) {
-      throw new HttpError(400, 'Informe um id válido.');
-    }
-    const where = id === undefined ? {} : uuidPattern.test(id) ? { id } : { asaasPaymentId: id };
-    res.json(await prisma.order.findMany({ where, ...listOptions(req) }));
   });
 
   app.post('/webhook', (req, res, next) => {

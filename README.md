@@ -2,8 +2,6 @@
 
 [Baixar o Swagger (openapi.json)](./openapi.json?raw=true) para importar no Postman.
 
-<a href="https://editor.swagger.io/" target="_blank" rel="noopener noreferrer">Abrir o Swagger Editor online</a> para importar e visualizar o arquivo `openapi.json`.
-
 Projeto para exemplificar o uso da API de pagamento do Asaas com node.js
 
 ## POST /customer
@@ -68,7 +66,7 @@ Lista os clientes cadastrados. `GET /customer?cpf=12345678909` consulta pelo CPF
 ]
 ```
 
-## POST /order e POST /payment
+## POST /order
 
 Cria um pedido e gera uma cobrança de R$ 15,00 com descrição `Compra de livro`, tipo `UNDEFINED` e vencimento na data atual.
 
@@ -133,34 +131,6 @@ Consulta um pedido pelo UUID local. Exemplo de requisição: `GET /order?id=2090
 ```
 
 **400 Bad Request** se o UUID estiver ausente ou for inválido. **404 Not Found** se o pedido não existir.
-
-## GET /payment
-
-Lista os pedidos locais. `GET /payment?id=pay_000000000001` consulta pelo identificador da cobrança.
-
-| Parâmetro opcional | Descrição |
-| --- | --- |
-| `id` | UUID local do pedido ou identificador `pay_...` do Asaas. |
-| `limit` | Inteiro de 1 a 100. Padrão de 50. |
-| `offset` | Inteiro de 0 a 2147483647. Padrão de 0. |
-
-**200 OK** — Lista do mais recente para o mais antigo. Sem correspondências, retorna `[]`. O status pode ser `PENDENTE`, `CONCLUIDO` ou `FALHA`.
-
-```json
-[
-  {
-    "id": "2090cde4-e448-43b0-bb35-bf918aea61cf",
-    "customerId": "46f8da35-0b07-448d-a6ef-56213965a355",
-    "asaasPaymentId": "pay_000000000001",
-    "amount": "15",
-    "dueDate": "2026-11-23",
-    "status": "CONCLUIDO",
-    "invoiceUrl": "https://exemplo.com/fatura",
-    "paidAt": "2026-11-23T15:08:00.000Z",
-    "createdAt": "2026-11-23T15:05:00.000Z"
-  }
-]
-```
 
 ## POST /webhook
 
