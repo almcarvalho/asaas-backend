@@ -38,7 +38,8 @@
               },
               "example": {
                 "name": "Ricardo Almeida Santos",
-                "cpfCnpj": "123.456.789-09"
+                "cpfCnpj": "123.456.789-09",
+                "email": "ricardo@example.com"
               }
             }
           }
@@ -58,7 +59,8 @@
                     "object": "customer",
                     "id": "cus_000010087717",
                     "name": "Ricardo Almeida Santos",
-                    "cpfCnpj": "12345678909"
+                    "cpfCnpj": "12345678909",
+                    "email": "ricardo@example.com"
                   },
                   "createdAt": "2026-11-23T15:00:00.000Z"
                 }
@@ -66,7 +68,7 @@
             }
           },
           "400": {
-            "description": "Dados do cadastro inválidos.",
+            "description": "Dados do cadastro inválidos, incluindo e-mail malformado quando informado.",
             "content": {
               "application/json": {
                 "schema": {
@@ -135,7 +137,7 @@
           {
             "name": "cpf",
             "in": "query",
-            "description": "CPF com 11 dígitos, sem pontos ou traço.",
+            "description": "CPF com 11 dígitos, sem pontos ou traço. Se ausente ou vazio, a consulta lista todos os clientes.",
             "required": false,
             "schema": {
               "type": "string",
@@ -152,13 +154,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Lista de clientes. Sem correspondências, retorna uma lista vazia.",
+            "description": "Lista combinada do mais recente para o mais antigo. Sem correspondências, retorna uma lista vazia.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Cliente"
+                    "$ref": "#/components/schemas/ClienteListado"
                   }
                 },
                 "example": [
@@ -171,7 +173,21 @@
                       "name": "Ricardo Almeida Santos",
                       "cpfCnpj": "12345678909"
                     },
-                    "createdAt": "2026-11-23T15:00:00.000Z"
+                    "createdAt": "2026-11-23T15:00:00.000Z",
+                    "origin": "base"
+                  },
+                  {
+                    "id": null,
+                    "customer_id": "cus_000010087718",
+                    "asaas": {
+                      "object": "customer",
+                      "id": "cus_000010087718",
+                      "name": "Ana Souza",
+                      "cpfCnpj": "98765432100",
+                      "dateCreated": "2026-11-22"
+                    },
+                    "createdAt": "2026-11-22",
+                    "origin": "asaas"
                   }
                 ]
               }
@@ -192,8 +208,35 @@
           },
           "500": {
             "$ref": "#/components/responses/ErroInterno"
+          },
+          "502": {
+            "description": "Falha na integração com o Asaas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Falha na comunicação com o Asaas."
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Tempo limite na comunicação com o Asaas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Falha na comunicação com o Asaas."
+                }
+              }
+            }
           }
-        }
+        },
+        "description": "Combina a base local com o Asaas, deduplica pelo customer_id e aplica cpf, limit e offset. A origem base prevalece quando o cadastro existe nos dois sistemas."
       }
     },
     "/order": {
@@ -320,18 +363,18 @@
           "Pedidos"
         ],
         "operationId": "consultarPedido",
-        "summary": "Consultar pedido por ID",
+        "summary": "Consultar pedido pelo ID da cobrança no Asaas",
         "parameters": [
           {
             "name": "id",
             "in": "query",
-            "description": "UUID local do pedido retornado na criação.",
+            "description": "ID da cobrança no Asaas, retornado como asaasPaymentId na criação.",
             "required": true,
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "minLength": 1
             },
-            "example": "2090cde4-e448-43b0-bb35-bf918aea61cf"
+            "example": "pay_000000000001"
           }
         ],
         "responses": {
@@ -357,14 +400,14 @@
             }
           },
           "400": {
-            "description": "UUID ausente ou inválido.",
+            "description": "ID da cobrança ausente ou inválido.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Erro"
                 },
                 "example": {
-                  "error": "Informe o UUID do pedido no parâmetro id."
+                  "error": "Informe o asaasPaymentId no parâmetro id."
                 }
               }
             }
@@ -483,13 +526,12 @@
       "Limite": {
         "name": "limit",
         "in": "query",
-        "description": "Quantidade máxima de resultados.",
+        "description": "Quantidade máxima de resultados. Quando omitido, retorna todos a partir do offset.",
         "required": false,
         "schema": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 100,
-          "default": 50
+          "maximum": 100
         },
         "example": 50
       },
@@ -550,6 +592,11 @@
           "cpfCnpj": {
             "type": "string",
             "description": "CPF com 11 dígitos ou CNPJ com 14 dígitos. Aceita pontuação."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Endereço de e-mail opcional do cliente."
           }
         }
       },
@@ -711,6 +758,44 @@
           "orderId": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "ClienteListado": {
+        "type": "object",
+        "required": [
+          "id",
+          "customer_id",
+          "asaas",
+          "createdAt",
+          "origin"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "UUID local. Nulo quando o cadastro existe somente no Asaas."
+          },
+          "customer_id": {
+            "type": "string"
+          },
+          "asaas": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Resposta completa do cadastro no Asaas."
+          },
+          "createdAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Data local em ISO 8601 ou data de cadastro retornada pelo Asaas."
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "base",
+              "asaas"
+            ]
           }
         }
       }

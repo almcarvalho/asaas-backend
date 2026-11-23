@@ -16,10 +16,40 @@ const dateFormatter = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 });
 const bookPrice = 15;
+const bookDescription = 'Compra de livro';
+const priceFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const paymentDateFormatter = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Bahia',
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
+const paymentMethods = new Map([
+  ['PIX', 'Pix'],
+  ['BOLETO', 'Boleto bancário'],
+  ['CREDIT_CARD', 'Cartão de crédito'],
+  ['DEBIT_CARD', 'Cartão de débito'],
+  ['TRANSFER', 'Transferência'],
+  ['DEPOSIT', 'Depósito'],
+  ['CASH', 'Dinheiro'],
+  ['UNDEFINED', 'Não informada'],
+]);
 const uuidPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 function normalizeDocument(value) {
   return typeof value === 'string' ? value.replace(/[.\/-\s]/g, '') : '';
+}
+
+function discordCustomerFields({ name, cpfCnpj, email }) {
+  const document = normalizeDocument(cpfCnpj);
+  const isCnpj = document.length === 14;
+  const formattedDocument = isCnpj
+    ? document.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+    : document.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  return [
+    { name: 'Nome', value: typeof name === 'string' && name.trim().slice(0, 1024) || 'Não informado' },
+    { name: isCnpj ? 'CNPJ' : 'CPF', value: formattedDocument.slice(0, 1024) || 'Não informado', inline: true },
+    { name: 'E-mail', value: typeof email === 'string' && email.trim().slice(0, 1024) || 'Não informado', inline: true },
+  ];
 }
 
 class HttpError extends Error {
@@ -36,7 +66,7 @@ function matchesToken(received, expected) {
   return timingSafeEqual(digest(received), digest(expected));
 }
 
-async function notifyDiscord(content) {
+async function notifyDiscord(message) {
   const webhook = process.env.DISCORD_WEBHOOK || process.env.discord_webhook;
   if (!webhook?.trim()) return;
 
@@ -48,7 +78,7 @@ async function notifyDiscord(content) {
       redirect: 'error',
       signal: AbortSignal.timeout(3000),
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
+      body: JSON.stringify({ ...message, allowed_mentions: { parse: [] } }),
     });
     if (!response.ok) console.error('Falha na notificação do Discord', response.status);
     await response.body?.cancel();
@@ -73,17 +103,18 @@ function start() {
   app.disable('x-powered-by');
   const json = express.json({ limit: '100kb' });
 
-  async function asaasPost(path, body) {
+  async function asaasRequest(path, body) {
+    const method = body === undefined ? 'GET' : 'POST';
     let response;
     try {
       response = await fetch(endpoint + path, {
-        method: 'POST',
+        method,
         redirect: 'error',
         signal: AbortSignal.timeout(10000),
         headers: {
           'User-Agent': 'asaasback/1.0',
           Accept: 'application/json',
-          'Content-Type': 'application/json',
+          ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
           access_token: asaasKey,
         },
         body: JSON.stringify(body),
@@ -94,15 +125,48 @@ function start() {
     }
 
     if (!response.ok) {
-      const status = [400, 422].includes(response.status) ? 422 : 502;
+      const status = method === 'POST' && [400, 422].includes(response.status) ? 422 : 502;
       throw new HttpError(status, 'O Asaas recusou a solicitação.', response.status);
     }
 
-    const result = await response.json().catch(() => null);
+    return response.json().catch(() => null);
+  }
+
+  async function asaasPost(path, body) {
+    const result = await asaasRequest(path, body);
     if (typeof result?.id !== 'string' || !result.id) {
       throw new HttpError(502, 'Resposta inválida do Asaas.');
     }
     return result;
+  }
+
+  async function listAsaasCustomers(cpf) {
+    const pageSize = 100;
+    const customers = new Map();
+    const query = new URLSearchParams({ limit: String(pageSize) });
+    if (cpf) query.set('cpfCnpj', cpf);
+
+    for (let offset = 0; ; offset += pageSize) {
+      query.set('offset', String(offset));
+      const page = await asaasRequest('/customers?' + query);
+      if (!Array.isArray(page?.data) || typeof page.hasMore !== 'boolean' ||
+          (page.hasMore && page.data.length === 0)) {
+        throw new HttpError(502, 'Lista de clientes inválida no Asaas.');
+      }
+      for (const customer of page.data) {
+        if (typeof customer?.id !== 'string' || !customer.id) {
+          throw new HttpError(502, 'Lista de clientes inválida no Asaas.');
+        }
+        customers.set(customer.id, {
+          id: null,
+          customer_id: customer.id,
+          asaas: customer,
+          createdAt: customer.dateCreated ?? null,
+          origin: 'asaas',
+        });
+      }
+      if (!page.hasMore) return customers;
+    }
   }
 
   function customerFilter(id) {
@@ -113,38 +177,69 @@ function start() {
   }
 
   function listOptions(req) {
-    const { limit = '50', offset = '0' } = req.query;
-    if (typeof limit !== 'string' || typeof offset !== 'string' ||
-        !/^\d+$/.test(limit) || !/^\d+$/.test(offset) ||
-        Number(limit) < 1 || Number(limit) > 100 || Number(offset) > 2147483647) {
+    const { limit, offset = '0' } = req.query;
+    if ((limit !== undefined && (typeof limit !== 'string' ||
+        !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100)) ||
+        typeof offset !== 'string' || !/^\d+$/.test(offset) || Number(offset) > 2147483647) {
       throw new HttpError(400, 'Use limit entre 1 e 100 e offset inteiro entre 0 e 2147483647.');
     }
-    return { take: Number(limit), skip: Number(offset), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] };
+    return {
+      ...(limit === undefined ? {} : { take: Number(limit) }),
+      skip: Number(offset),
+    };
   }
 
   app.post('/customer', json, async (req, res) => {
-    const { name, cpfCnpj } = req.body ?? {};
+    const { name, cpfCnpj, email } = req.body ?? {};
     const document = normalizeDocument(cpfCnpj);
     if (typeof name !== 'string' || !name.trim() || !/^(\d{11}|\d{14})$/.test(document)) {
       throw new HttpError(400, 'Informe name e cpfCnpj com 11 ou 14 dígitos.');
     }
 
-    const asaas = await asaasPost('/customers', { name: name.trim(), cpfCnpj: document });
+    const normalizedEmail = typeof email === 'string' ? email.trim() : '';
+    if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      throw new HttpError(400, 'Informe um email válido.');
+    }
+
+    const asaas = await asaasPost('/customers', {
+      name: name.trim(),
+      cpfCnpj: document,
+      ...(normalizedEmail ? { email: normalizedEmail } : {}),
+    });
     const customer = await prisma.customer.create({ data: { customer_id: asaas.id, asaas } });
     res.status(201).json(customer);
-    void notifyDiscord(`Novo cliente cadastrado. Cliente: ${customer.id}.`);
+    void notifyDiscord({
+      embeds: [{
+        title: 'Novo cliente cadastrado',
+        color: 0x5865f2,
+        fields: discordCustomerFields({ name, cpfCnpj: document, email: normalizedEmail }),
+      }],
+    });
   });
 
   app.get('/customer', async (req, res) => {
     const { cpf } = req.query;
-    const where = {};
-    if (cpf !== undefined) {
+    if (cpf !== undefined && cpf !== '') {
       if (typeof cpf !== 'string' || !/^\d{11}$/.test(cpf)) {
         throw new HttpError(400, 'Informe um CPF com 11 dígitos, sem pontuação.');
       }
-      where.asaas = { path: ['cpfCnpj'], equals: cpf };
     }
-    res.json(await prisma.customer.findMany({ where, ...listOptions(req) }));
+    const { take, skip } = listOptions(req);
+    const customers = await listAsaasCustomers(cpf);
+    const where = cpf ? {
+      OR: [
+        { asaas: { path: ['cpfCnpj'], equals: cpf } },
+        { customer_id: { in: [...customers.keys()] } },
+      ],
+    } : {};
+    const localCustomers = await prisma.customer.findMany({ where });
+    for (const customer of localCustomers) {
+      customers.set(customer.customer_id, { ...customer, origin: 'base' });
+    }
+    const sorted = [...customers.values()].sort((a, b) =>
+      ((Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0)) ||
+      (b.id ?? b.customer_id).localeCompare(a.id ?? a.customer_id));
+    res.json(sorted.slice(skip, take === undefined ? undefined : skip + take));
   });
 
   app.post('/order', json, async (req, res) => {
@@ -163,7 +258,7 @@ function start() {
         billingType: 'UNDEFINED',
         value: bookPrice,
         dueDate,
-        description: 'Compra de livro',
+        description: bookDescription,
         externalReference: order.id,
       });
     } catch (error) {
@@ -182,15 +277,25 @@ function start() {
     });
     if (!saved.count) throw new HttpError(502, 'A cobrança retornada diverge da registrada.');
     res.status(201).json(await prisma.order.findUnique({ where: { id: order.id } }));
-    void notifyDiscord(`Novo pedido criado. Pedido: ${order.id}. Cobrança: ${payment.id}.`);
+    void notifyDiscord({
+      embeds: [{
+        title: 'Novo pedido criado',
+        color: 0x5865f2,
+        fields: [
+          ...discordCustomerFields(customer.asaas ?? {}),
+          { name: 'Produto', value: 'Livro', inline: true },
+          { name: 'Valor', value: priceFormatter.format(Number(order.amount)), inline: true },
+        ],
+      }],
+    });
   });
 
   app.get('/order', async (req, res) => {
     const { id } = req.query;
-    if (typeof id !== 'string' || !uuidPattern.test(id)) {
-      throw new HttpError(400, 'Informe o UUID do pedido no parâmetro id.');
+    if (typeof id !== 'string' || !id.trim()) {
+      throw new HttpError(400, 'Informe o asaasPaymentId no parâmetro id.');
     }
-    const order = await prisma.order.findUnique({ where: { id } });
+    const order = await prisma.order.findUnique({ where: { asaasPaymentId: id.trim() } });
     if (!order) throw new HttpError(404, 'Pedido não encontrado.');
     res.json(order);
   });
@@ -221,13 +326,28 @@ function start() {
     }
 
     // A transição condicional mantém o primeiro paidAt em reentregas e eventos concorrentes.
-    const updated = await prisma.order.updateMany({
+    const [paidOrder] = await prisma.order.updateManyAndReturn({
       where: { status: { not: 'CONCLUIDO' }, OR: matches },
       data: { status: 'CONCLUIDO', asaasPaymentId: payment.id, paidAt: new Date() },
+      select: { id: true, amount: true, asaasPaymentId: true, paidAt: true },
     });
     res.json({ received: true });
-    if (updated.count) {
-      void notifyDiscord(`Pedido pago. Cobrança: ${payment.id}.`);
+    if (paidOrder) {
+      const fields = [
+        { name: 'Pedido', value: paidOrder.id },
+        { name: 'Produto', value: 'Livro', inline: true },
+        { name: 'Valor do pedido', value: priceFormatter.format(Number(paidOrder.amount)), inline: true },
+        { name: 'Cobrança Asaas', value: paidOrder.asaasPaymentId.slice(0, 1024) },
+        { name: 'Forma de pagamento', value: paymentMethods.get(payment.billingType) || 'Não informada', inline: true },
+        { name: 'Confirmação registrada em', value: paymentDateFormatter.format(paidOrder.paidAt), inline: true },
+      ];
+      if (Number.isFinite(payment.value)) {
+        fields.push({ name: 'Valor da cobrança', value: priceFormatter.format(payment.value), inline: true });
+      }
+      if (Number.isFinite(payment.netValue)) {
+        fields.push({ name: 'Valor líquido', value: priceFormatter.format(payment.netValue), inline: true });
+      }
+      void notifyDiscord({ embeds: [{ title: 'Pedido pago', color: 0x57f287, fields }] });
     }
   });
 

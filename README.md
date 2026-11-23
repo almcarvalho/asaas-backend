@@ -8,17 +8,19 @@ Projeto para exemplificar o uso da API de pagamento do Asaas com node.js
 
 Cadastra um cliente no Asaas e salva o cadastro local.
 
-| Campo obrigatório | Tipo | Descrição |
+| Campo | Tipo | Descrição |
 | --- | --- | --- |
-| `name` | string | Nome do cliente. |
-| `cpfCnpj` | string | CPF com 11 dígitos ou CNPJ com 14 dígitos. Aceita pontuação. |
+| `name` | string | Obrigatório. Nome do cliente. |
+| `cpfCnpj` | string | Obrigatório. CPF com 11 dígitos ou CNPJ com 14 dígitos. Aceita pontuação. |
+| `email` | string | Opcional. Endereço de e-mail do cliente. |
 
 **Exemplo de corpo**
 
 ```json
 {
   "name": "Ricardo Almeida Santos",
-  "cpfCnpj": "123.456.789-09"
+  "cpfCnpj": "123.456.789-09",
+  "email": "ricardo@example.com"
 }
 ```
 
@@ -32,7 +34,8 @@ Cadastra um cliente no Asaas e salva o cadastro local.
     "object": "customer",
     "id": "cus_000010087717",
     "name": "Ricardo Almeida Santos",
-    "cpfCnpj": "12345678909"
+    "cpfCnpj": "12345678909",
+    "email": "ricardo@example.com"
   },
   "createdAt": "2026-11-23T15:00:00.000Z"
 }
@@ -40,15 +43,15 @@ Cadastra um cliente no Asaas e salva o cadastro local.
 
 ## GET /customer
 
-Lista os clientes cadastrados. `GET /customer?cpf=12345678909` consulta pelo CPF.
+Combina os clientes da base local e do Asaas quando `cpf` está ausente ou vazio. `GET /customer?cpf=12345678909` filtra pelo CPF. Use `GET /customer?limit=10&offset=20` para paginar a lista combinada.
 
 | Parâmetro opcional | Descrição |
 | --- | --- |
 | `cpf` | CPF com 11 dígitos, sem pontuação. |
-| `limit` | Inteiro de 1 a 100. Padrão de 50. |
+| `limit` | Inteiro de 1 a 100. Quando omitido, retorna todos os resultados a partir do `offset`. |
 | `offset` | Inteiro de 0 a 2147483647. Padrão de 0. |
 
-**200 OK** — Lista do mais recente para o mais antigo. Sem correspondências, retorna `[]`.
+**200 OK** — Lista do mais recente para o mais antigo. Sem correspondências, retorna `[]`. Cada `customer_id` aparece uma única vez. `origin: "base"` indica cadastro local, que tem prioridade. `origin: "asaas"` indica cadastro exclusivo do Asaas e retorna `id: null`. A consulta não grava esses cadastros na base local. Se a consulta ao Asaas falhar, a API responde com `502` ou `504`.
 
 ```json
 [
@@ -61,7 +64,21 @@ Lista os clientes cadastrados. `GET /customer?cpf=12345678909` consulta pelo CPF
       "name": "Ricardo Almeida Santos",
       "cpfCnpj": "12345678909"
     },
-    "createdAt": "2026-11-23T15:00:00.000Z"
+    "createdAt": "2026-11-23T15:00:00.000Z",
+    "origin": "base"
+  },
+  {
+    "id": null,
+    "customer_id": "cus_000010087718",
+    "asaas": {
+      "object": "customer",
+      "id": "cus_000010087718",
+      "name": "Ana Souza",
+      "cpfCnpj": "98765432100",
+      "dateCreated": "2026-11-22"
+    },
+    "createdAt": "2026-11-22",
+    "origin": "asaas"
   }
 ]
 ```
@@ -108,11 +125,11 @@ Cria um pedido e gera uma cobrança de R$ 15,00 com descrição `Compra de livro
 
 ## GET /order
 
-Consulta um pedido pelo UUID local. Exemplo de requisição: `GET /order?id=2090cde4-e448-43b0-bb35-bf918aea61cf`.
+Consulta um pedido pelo `asaasPaymentId`. Exemplo de requisição: `GET /order?id=pay_000000000001`.
 
 | Parâmetro obrigatório | Descrição |
 | --- | --- |
-| `id` | UUID local do pedido, retornado na criação. |
+| `id` | ID da cobrança no Asaas, retornado como `asaasPaymentId` na criação. |
 
 **200 OK** — Retorna um objeto com os dados e o status atual do pedido.
 
@@ -130,7 +147,7 @@ Consulta um pedido pelo UUID local. Exemplo de requisição: `GET /order?id=2090
 }
 ```
 
-**400 Bad Request** se o UUID estiver ausente ou for inválido. **404 Not Found** se o pedido não existir.
+**400 Bad Request** se o parâmetro `id` estiver ausente ou vazio. **404 Not Found** se o pedido não existir.
 
 ## POST /webhook
 
