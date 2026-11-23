@@ -1,6 +1,6 @@
 # API de venda de livros
 
-Envie `Content-Type: application/json` nas requisições com corpo. As rotas de clientes e pedidos são públicas. O webhook exige o cabeçalho `asaas-access-token`.
+Projeto para exemplificar o uso da API de pagamento do Asaas com node.js
 
 ## POST /customer
 
