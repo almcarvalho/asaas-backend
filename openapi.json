@@ -1,0 +1,908 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API de venda de livros",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Servidor local"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Clientes"
+    },
+    {
+      "name": "Pedidos"
+    },
+    {
+      "name": "Webhook"
+    }
+  ],
+  "paths": {
+    "/customer": {
+      "post": {
+        "tags": [
+          "Clientes"
+        ],
+        "operationId": "cadastrarCliente",
+        "summary": "Cadastrar cliente",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CadastrarCliente"
+              },
+              "example": {
+                "name": "Ricardo Almeida Santos",
+                "cpfCnpj": "123.456.789-09"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Cliente cadastrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cliente"
+                },
+                "example": {
+                  "id": "46f8da35-0b07-448d-a6ef-56213965a355",
+                  "customer_id": "cus_000010087717",
+                  "asaas": {
+                    "object": "customer",
+                    "id": "cus_000010087717",
+                    "name": "Ricardo Almeida Santos",
+                    "cpfCnpj": "12345678909"
+                  },
+                  "createdAt": "2026-11-23T15:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados do cadastro inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Informe name e cpfCnpj com 11 ou 14 dígitos."
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/CorpoMuitoGrande"
+          },
+          "422": {
+            "description": "O Asaas rejeitou o cadastro.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "O Asaas recusou a solicitação."
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ErroInterno"
+          },
+          "502": {
+            "description": "Falha na integração com o Asaas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Falha na comunicação com o Asaas."
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Tempo limite na comunicação com o Asaas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Falha na comunicação com o Asaas."
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Clientes"
+        ],
+        "operationId": "listarClientes",
+        "summary": "Listar clientes ou filtrar por CPF",
+        "parameters": [
+          {
+            "name": "cpf",
+            "in": "query",
+            "description": "CPF com 11 dígitos, sem pontos ou traço.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{11}$"
+            },
+            "example": "12345678909"
+          },
+          {
+            "$ref": "#/components/parameters/Limite"
+          },
+          {
+            "$ref": "#/components/parameters/Deslocamento"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de clientes. Sem correspondências, retorna uma lista vazia.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Cliente"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "46f8da35-0b07-448d-a6ef-56213965a355",
+                    "customer_id": "cus_000010087717",
+                    "asaas": {
+                      "object": "customer",
+                      "id": "cus_000010087717",
+                      "name": "Ricardo Almeida Santos",
+                      "cpfCnpj": "12345678909"
+                    },
+                    "createdAt": "2026-11-23T15:00:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "CPF ou parâmetros de paginação inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Informe um CPF com 11 dígitos, sem pontuação."
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ErroInterno"
+          }
+        }
+      }
+    },
+    "/order": {
+      "post": {
+        "tags": [
+          "Pedidos"
+        ],
+        "operationId": "criarPedido",
+        "summary": "Criar pedido e cobrança",
+        "description": "Recebe o ID local ou o ID do cliente no Asaas, cria um pedido e gera uma cobrança de R$ 15,00. O vencimento usa a data atual da Bahia.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CriarPedido"
+              },
+              "example": {
+                "id": "cus_000010087717"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pedido criado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pedido"
+                },
+                "example": {
+                  "id": "2090cde4-e448-43b0-bb35-bf918aea61cf",
+                  "customerId": "46f8da35-0b07-448d-a6ef-56213965a355",
+                  "asaasPaymentId": "pay_000000000001",
+                  "amount": "15",
+                  "dueDate": "2026-11-23",
+                  "status": "PENDENTE",
+                  "invoiceUrl": "https://example.com/fatura",
+                  "paidAt": null,
+                  "createdAt": "2026-11-23T15:05:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador inválido ou corpo inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Informe um id válido."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cliente não cadastrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Cliente não encontrado."
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/CorpoMuitoGrande"
+          },
+          "422": {
+            "description": "O Asaas rejeitou os dados da cobrança.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "O Asaas recusou a solicitação.",
+                  "orderId": "2090cde4-e448-43b0-bb35-bf918aea61cf"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ErroInterno"
+          },
+          "502": {
+            "description": "Falha na criação ou na resposta da cobrança.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Falha na comunicação com o Asaas.",
+                  "orderId": "2090cde4-e448-43b0-bb35-bf918aea61cf"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Tempo limite na comunicação com o Asaas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Falha na comunicação com o Asaas.",
+                  "orderId": "2090cde4-e448-43b0-bb35-bf918aea61cf"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Pedidos"
+        ],
+        "operationId": "consultarPedido",
+        "summary": "Consultar pedido por ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "UUID local do pedido retornado na criação.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "2090cde4-e448-43b0-bb35-bf918aea61cf"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pedido encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pedido"
+                },
+                "example": {
+                  "id": "2090cde4-e448-43b0-bb35-bf918aea61cf",
+                  "customerId": "46f8da35-0b07-448d-a6ef-56213965a355",
+                  "asaasPaymentId": "pay_000000000001",
+                  "amount": "15",
+                  "dueDate": "2026-11-23",
+                  "status": "CONCLUIDO",
+                  "invoiceUrl": "https://example.com/fatura",
+                  "paidAt": "2026-11-23T15:08:00.000Z",
+                  "createdAt": "2026-11-23T15:05:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "UUID ausente ou inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Informe o UUID do pedido no parâmetro id."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pedido inexistente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Pedido não encontrado."
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ErroInterno"
+          }
+        }
+      }
+    },
+    "/payment": {
+      "post": {
+        "tags": [
+          "Pedidos"
+        ],
+        "operationId": "criarCobranca",
+        "summary": "Criar cobrança e pedido",
+        "description": "Recebe o ID local ou o ID do cliente no Asaas, cria um pedido e gera uma cobrança de R$ 15,00. O vencimento usa a data atual da Bahia.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CriarPedido"
+              },
+              "example": {
+                "id": "cus_000010087717"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pedido criado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pedido"
+                },
+                "example": {
+                  "id": "2090cde4-e448-43b0-bb35-bf918aea61cf",
+                  "customerId": "46f8da35-0b07-448d-a6ef-56213965a355",
+                  "asaasPaymentId": "pay_000000000001",
+                  "amount": "15",
+                  "dueDate": "2026-11-23",
+                  "status": "PENDENTE",
+                  "invoiceUrl": "https://example.com/fatura",
+                  "paidAt": null,
+                  "createdAt": "2026-11-23T15:05:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador inválido ou corpo inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Informe um id válido."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cliente não cadastrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Cliente não encontrado."
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/CorpoMuitoGrande"
+          },
+          "422": {
+            "description": "O Asaas rejeitou os dados da cobrança.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "O Asaas recusou a solicitação.",
+                  "orderId": "2090cde4-e448-43b0-bb35-bf918aea61cf"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ErroInterno"
+          },
+          "502": {
+            "description": "Falha na criação ou na resposta da cobrança.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Falha na comunicação com o Asaas.",
+                  "orderId": "2090cde4-e448-43b0-bb35-bf918aea61cf"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Tempo limite na comunicação com o Asaas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Falha na comunicação com o Asaas.",
+                  "orderId": "2090cde4-e448-43b0-bb35-bf918aea61cf"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Pedidos"
+        ],
+        "operationId": "listarPedidos",
+        "summary": "Listar pedidos e cobranças",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "UUID local do pedido ou ID da cobrança no Asaas.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "pay_000000000001"
+          },
+          {
+            "$ref": "#/components/parameters/Limite"
+          },
+          {
+            "$ref": "#/components/parameters/Deslocamento"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de pedidos. Sem correspondências, retorna uma lista vazia.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Pedido"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "2090cde4-e448-43b0-bb35-bf918aea61cf",
+                    "customerId": "46f8da35-0b07-448d-a6ef-56213965a355",
+                    "asaasPaymentId": "pay_000000000001",
+                    "amount": "15",
+                    "dueDate": "2026-11-23",
+                    "status": "CONCLUIDO",
+                    "invoiceUrl": "https://example.com/fatura",
+                    "paidAt": "2026-11-23T15:08:00.000Z",
+                    "createdAt": "2026-11-23T15:05:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "ID ou parâmetros de paginação inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Informe um id válido."
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ErroInterno"
+          }
+        }
+      }
+    },
+    "/webhook": {
+      "post": {
+        "tags": [
+          "Webhook"
+        ],
+        "operationId": "receberWebhookAsaas",
+        "summary": "Receber evento de pagamento do Asaas",
+        "description": "Envie o token do webhook no cabeçalho asaas-access-token. PAYMENT_CONFIRMED e PAYMENT_RECEIVED concluem o pedido correspondente. Outros eventos são aceitos sem atualizar o pedido.",
+        "security": [
+          {
+            "AsaasWebhookToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventoAsaas"
+              },
+              "example": {
+                "event": "PAYMENT_RECEIVED",
+                "payment": {
+                  "id": "pay_000000000001",
+                  "externalReference": "2090cde4-e448-43b0-bb35-bf918aea61cf",
+                  "customer": "cus_000010087717",
+                  "value": 15
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Evento recebido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventoRecebido"
+                },
+                "example": {
+                  "received": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Evento inválido ou identificador da cobrança ausente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Identificador da cobrança ausente."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token ausente ou inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                },
+                "example": {
+                  "error": "Token do webhook inválido."
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/CorpoMuitoGrande"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErroInterno"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "AsaasWebhookToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "asaas-access-token",
+        "description": "Token configurado para o webhook do Asaas."
+      }
+    },
+    "parameters": {
+      "Limite": {
+        "name": "limit",
+        "in": "query",
+        "description": "Quantidade máxima de resultados.",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        },
+        "example": 50
+      },
+      "Deslocamento": {
+        "name": "offset",
+        "in": "query",
+        "description": "Quantidade de resultados a pular.",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "default": 0
+        },
+        "example": 0
+      }
+    },
+    "responses": {
+      "ErroInterno": {
+        "description": "Erro interno.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Erro"
+            },
+            "example": {
+              "error": "Erro interno."
+            }
+          }
+        }
+      },
+      "CorpoMuitoGrande": {
+        "description": "Corpo acima do limite de 100 KB.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Erro"
+            },
+            "example": {
+              "error": "Corpo da requisição muito grande."
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "CadastrarCliente": {
+        "type": "object",
+        "required": [
+          "name",
+          "cpfCnpj"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cpfCnpj": {
+            "type": "string",
+            "description": "CPF com 11 dígitos ou CNPJ com 14 dígitos. Aceita pontuação."
+          }
+        }
+      },
+      "Cliente": {
+        "type": "object",
+        "required": [
+          "id",
+          "customer_id",
+          "asaas",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "customer_id": {
+            "type": "string"
+          },
+          "asaas": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Resposta completa do cadastro no Asaas."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CriarPedido": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "UUID local ou identificador cus_... do cliente."
+          }
+        }
+      },
+      "Pedido": {
+        "type": "object",
+        "required": [
+          "id",
+          "customerId",
+          "asaasPaymentId",
+          "amount",
+          "dueDate",
+          "status",
+          "invoiceUrl",
+          "paidAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "customerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "asaasPaymentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "string",
+            "description": "Valor em reais como string decimal."
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDENTE",
+              "CONCLUIDO",
+              "FALHA"
+            ]
+          },
+          "invoiceUrl": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EventoAsaas": {
+        "type": "object",
+        "required": [
+          "event"
+        ],
+        "properties": {
+          "event": {
+            "type": "string",
+            "description": "Tipo de evento do Asaas."
+          },
+          "payment": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Obrigatório nos eventos PAYMENT_CONFIRMED e PAYMENT_RECEIVED."
+              },
+              "externalReference": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "customer": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "description": "Obrigatório nos eventos de pagamento aceitos."
+          }
+        }
+      },
+      "EventoRecebido": {
+        "type": "object",
+        "required": [
+          "received"
+        ],
+        "properties": {
+          "received": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        }
+      },
+      "Erro": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      }
+    }
+  }
+}

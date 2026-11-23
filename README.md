@@ -1,5 +1,7 @@
 # API de venda de livros
 
+[Baixar o Swagger (openapi.json)](./openapi.json?raw=true) para importar no Postman.
+
 Projeto para exemplificar o uso da API de pagamento do Asaas com node.js
 
 ## POST /customer
