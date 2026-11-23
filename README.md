@@ -66,7 +66,7 @@ Lista os clientes cadastrados. `GET /customer?cpf=12345678909` consulta pelo CPF
 
 ## POST /order e POST /payment
 
-Cria um pedido e gera uma cobrança de R$ 15,00 com descrição `Compra de livro`, tipo `UNDEFINED` e vencimento na data atual da Bahia.
+Cria um pedido e gera uma cobrança de R$ 15,00 com descrição `Compra de livro`, tipo `UNDEFINED` e vencimento na data atual.
 
 | Campo obrigatório | Tipo | Descrição |
 | --- | --- | --- |
