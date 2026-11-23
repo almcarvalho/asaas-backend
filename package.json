@@ -1,0 +1,23 @@
+{
+  "name": "asaasback",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "postinstall": "prisma generate",
+    "db:deploy": "node prisma/cli.js db push --skip-generate",
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.0",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "prisma": "6.19.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

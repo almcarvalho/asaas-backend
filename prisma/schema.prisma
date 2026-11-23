@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id          String   @id @default(uuid()) @db.Uuid
+  customer_id String   @unique
+  asaas       Json
+  createdAt   DateTime @default(now())
+  orders      Order[]
+}
+
+enum OrderStatus {
+  PENDENTE
+  CONCLUIDO
+  FALHA
+}
+
+model Order {
+  id             String      @id @default(uuid()) @db.Uuid
+  customerId     String      @db.Uuid
+  customer       Customer    @relation(fields: [customerId], references: [id])
+  asaasPaymentId String?     @unique
+  amount         Decimal     @db.Decimal(10, 2)
+  dueDate        String
+  status         OrderStatus @default(PENDENTE)
+  invoiceUrl     String?
+  paidAt         DateTime?
+  createdAt      DateTime    @default(now())
+
+  @@index([customerId])
+}
