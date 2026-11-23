@@ -2,6 +2,8 @@
 
 [Baixar o Swagger (openapi.json)](./openapi.json?raw=true) para importar no Postman.
 
+[Abrir o Swagger Editor online](https://editor.swagger.io/) para importar e visualizar o arquivo `openapi.json`.
+
 Projeto para exemplificar o uso da API de pagamento do Asaas com node.js
 
 ## POST /customer
