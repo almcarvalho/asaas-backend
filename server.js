@@ -18,6 +18,10 @@ const dateFormatter = new Intl.DateTimeFormat('en-CA', {
 const bookPrice = 15;
 const uuidPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
+function normalizeDocument(value) {
+  return typeof value === 'string' ? value.replace(/[.\/-\s]/g, '') : '';
+}
+
 class HttpError extends Error {
   constructor(status, message, asaasStatus) {
     super(message);
@@ -120,7 +124,7 @@ function start() {
 
   app.post('/customer', json, async (req, res) => {
     const { name, cpfCnpj } = req.body ?? {};
-    const document = typeof cpfCnpj === 'string' ? cpfCnpj.replace(/[.\/-\s]/g, '') : '';
+    const document = normalizeDocument(cpfCnpj);
     if (typeof name !== 'string' || !name.trim() || !/^(\d{11}|\d{14})$/.test(document)) {
       throw new HttpError(400, 'Informe name e cpfCnpj com 11 ou 14 dígitos.');
     }
@@ -132,11 +136,17 @@ function start() {
   });
 
   app.get('/customer', async (req, res) => {
-    const where = req.query.id === undefined ? {} : customerFilter(req.query.id);
+    const { cpf } = req.query;
+    const where = {};
+    if (cpf !== undefined) {
+      const document = normalizeDocument(cpf);
+      if (!/^\d{11}$/.test(document)) throw new HttpError(400, 'Informe um CPF com 11 dígitos.');
+      where.asaas = { path: ['cpfCnpj'], equals: document };
+    }
     res.json(await prisma.customer.findMany({ where, ...listOptions(req) }));
   });
 
-  app.post('/payment', json, async (req, res) => {
+  app.post(['/order', '/payment'], json, async (req, res) => {
     const customer = await prisma.customer.findUnique({ where: customerFilter(req.body?.id) });
     if (!customer) throw new HttpError(404, 'Cliente não encontrado.');
 
@@ -172,6 +182,16 @@ function start() {
     if (!saved.count) throw new HttpError(502, 'A cobrança retornada diverge da registrada.');
     res.status(201).json(await prisma.order.findUnique({ where: { id: order.id } }));
     void notifyDiscord(`Novo pedido criado. Pedido: ${order.id}. Cobrança: ${payment.id}.`);
+  });
+
+  app.get('/order', async (req, res) => {
+    const { id } = req.query;
+    if (typeof id !== 'string' || !uuidPattern.test(id)) {
+      throw new HttpError(400, 'Informe o UUID do pedido no parâmetro id.');
+    }
+    const order = await prisma.order.findUnique({ where: { id } });
+    if (!order) throw new HttpError(404, 'Pedido não encontrado.');
+    res.json(order);
   });
 
   app.get('/payment', async (req, res) => {
