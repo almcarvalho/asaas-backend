@@ -139,9 +139,10 @@ function start() {
     const { cpf } = req.query;
     const where = {};
     if (cpf !== undefined) {
-      const document = normalizeDocument(cpf);
-      if (!/^\d{11}$/.test(document)) throw new HttpError(400, 'Informe um CPF com 11 dígitos.');
-      where.asaas = { path: ['cpfCnpj'], equals: document };
+      if (typeof cpf !== 'string' || !/^\d{11}$/.test(cpf)) {
+        throw new HttpError(400, 'Informe um CPF com 11 dígitos, sem pontuação.');
+      }
+      where.asaas = { path: ['cpfCnpj'], equals: cpf };
     }
     res.json(await prisma.customer.findMany({ where, ...listOptions(req) }));
   });

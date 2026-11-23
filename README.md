@@ -38,11 +38,11 @@ Cadastra um cliente no Asaas e salva o cadastro local.
 
 ## GET /customer
 
-Lista os clientes cadastrados. `GET /customer?cpf=123.456.789-09` consulta pelo CPF.
+Lista os clientes cadastrados. `GET /customer?cpf=12345678909` consulta pelo CPF.
 
 | Parâmetro opcional | Descrição |
 | --- | --- |
-| `cpf` | CPF com 11 dígitos. Aceita pontuação. |
+| `cpf` | CPF com 11 dígitos, sem pontuação. |
 | `limit` | Inteiro de 1 a 100. Padrão de 50. |
 | `offset` | Inteiro de 0 a 2147483647. Padrão de 0. |
 
