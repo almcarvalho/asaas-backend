@@ -329,11 +329,18 @@ function start() {
     const [paidOrder] = await prisma.order.updateManyAndReturn({
       where: { status: { not: 'CONCLUIDO' }, OR: matches },
       data: { status: 'CONCLUIDO', asaasPaymentId: payment.id, paidAt: new Date() },
-      select: { id: true, amount: true, asaasPaymentId: true, paidAt: true },
+      select: {
+        id: true,
+        amount: true,
+        asaasPaymentId: true,
+        paidAt: true,
+        customer: { select: { asaas: true } },
+      },
     });
     res.json({ received: true });
     if (paidOrder) {
       const fields = [
+        ...discordCustomerFields(paidOrder.customer.asaas ?? {}),
         { name: 'Pedido', value: paidOrder.id },
         { name: 'Produto', value: 'Livro', inline: true },
         { name: 'Valor do pedido', value: priceFormatter.format(Number(paidOrder.amount)), inline: true },
