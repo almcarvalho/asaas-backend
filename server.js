@@ -285,6 +285,7 @@ function start() {
           ...discordCustomerFields(customer.asaas ?? {}),
           { name: 'Produto', value: 'Livro', inline: true },
           { name: 'Valor', value: priceFormatter.format(Number(order.amount)), inline: true },
+          { name: 'Asaas Payment ID', value: payment.id.slice(0, 1024) },
         ],
       }],
     });
